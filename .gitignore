@@ -1,3 +1,5 @@
 *.o
 sio
 a.out
+core
+*.rst

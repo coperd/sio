@@ -167,6 +167,9 @@ void parse_param(int argc, char **argv)
                 exit(EXIT_FAILURE);
         }
     }
+
+    if (vflag)
+        printf("====================Begin TRACE===================\n");
 }
 
 void check_all_var()
@@ -238,7 +241,9 @@ void *warmup_thread(void *args)
         offset += iosize;
     }
 
+#ifdef DEBUG
     printf("warmup write finished ...\n");
+#endif
     return NULL;
 }
 
@@ -267,34 +272,32 @@ void *rw_iothread(void *arg)
         for (i = 0; i < nb_thread_rw; i++) {
             off_t randoffset = rand() % RBLK_RANGE;
             clock_gettime(CLOCK_REALTIME, &rstart);
-            sleep(5);
-            printf("Begin sleepp....\n");
             int ret = pread(fd, buf, iosize, randoffset*BLK_SZ);
             errlist[i] = errno;
             clock_gettime(CLOCK_REALTIME, &rend);
             if (vflag) {
-                printf("pread count: [%d], retval: [%d], errno: [%d], %ld\n", 
+                printf("pread  %-6d ret: %-6d errno: %-2d offset: %-8ld\n", 
                         ++read_cnt, ret, errlist[i], randoffset*BLK_SZ/512);
             }
-            if (ret == -1) {
-                perror("pread");
-            }
+            if (ret == -1) handle_error("pread");
 
-            printf("pread OVER\n");
-            sleep(5);
             retlist[i] = ret;
             latencylist[i] = calc_latency(rstart, rend);
         }
     } else {                /* create write threads */
         for (i = 0; i < nb_thread_rw; i++) {
             off_t randoffset = RBLK_RANGE + rand() % WBLK_RANGE;
+            clock_gettime(CLOCK_REALTIME, &rstart);
             int ret = pwrite(fd, buf, iosize, randoffset*BLK_SZ);
-            //printf("tid[%ld] write count: [%d]\n", pthread_self(), ++write_cnt);
+            errlist[i] = errno;
+            clock_gettime(CLOCK_REALTIME, &rend);
             if (vflag) {
-                printf("pwrite count: [%d], retval: [%d], %ld\n", 
-                        ++write_cnt, ret, randoffset*BLK_SZ);
+                printf("pwrite %-6d ret: %-6d errno: %-2d offset: %-8ld\n", 
+                        ++write_cnt, ret, errlist[i], randoffset*BLK_SZ/512);
             }
             if (ret == -1) handle_error("pwrite");
+            retlist[i] = ret;
+            latencylist[i] = calc_latency(rstart, rend);
         }
     }
 
@@ -308,9 +311,13 @@ void rw_thrd_main(int argc, char **argv)
     struct thread_info *warmup_args = malloc(sizeof(struct thread_info));
     struct thread_info *wargs = malloc(sizeof(struct thread_info)*NB_WTHRD);
     struct thread_info *rargs = malloc(sizeof(struct thread_info)*NB_RTHRD);
-    int *tlatencylist = malloc(sizeof(int)*NB_READ);
-    int *tretlist = malloc(sizeof(int)*NB_READ);
-    int *terrlist = malloc(sizeof(int)*NB_READ);
+    int *tr_latencylist = calloc(NB_READ, sizeof(int));
+    int *tr_retlist = calloc(NB_READ, sizeof(int));
+    int *tr_errlist = calloc(NB_READ, sizeof(int));
+
+    int *tw_latencylist = calloc(NB_WRITE, sizeof(int));
+    int *tw_retlist = calloc(NB_WRITE, sizeof(int));
+    int *tw_errlist = calloc(NB_WRITE, sizeof(int));
 
     int i, j, ret;
 
@@ -335,7 +342,6 @@ void rw_thrd_main(int argc, char **argv)
         pthread_join(warmup_args->tid, NULL);
 
         sleep(5);
-        printf("warmup writes are finished .. \n");
     }
 
     clock_gettime(CLOCK_REALTIME, &start);
@@ -353,6 +359,9 @@ void rw_thrd_main(int argc, char **argv)
             wargs[i].nb_rw = NB_WRITE/NB_WTHRD;
             wargs[i].is_read = false;
             wargs[i].ret = 0;
+            wargs[i].ret = calloc(wargs[i].nb_rw, sizeof(int));
+            wargs[i].latencylist = calloc(rargs[i].nb_rw, sizeof(int));
+            wargs[i].errlist = calloc(wargs[i].nb_rw, sizeof(int));
 
             ret = pthread_create(&wargs[i].tid, NULL, rw_iothread, 
                     (void *)&wargs[i]);
@@ -363,7 +372,6 @@ void rw_thrd_main(int argc, char **argv)
             }
 
         }
-
     }
 
     /* init read threads */
@@ -377,9 +385,9 @@ void rw_thrd_main(int argc, char **argv)
             rargs[i].iosize = BLK_SZ;
             rargs[i].nb_rw = NB_READ/NB_RTHRD;
             rargs[i].is_read = true; /* read thread */
-            rargs[i].ret = malloc(sizeof(int)*rargs[i].nb_rw);
-            rargs[i].latencylist = malloc(sizeof(int)*rargs[i].nb_rw);
-            rargs[i].errlist = malloc(sizeof(int)*rargs[i].nb_rw);
+            rargs[i].ret = calloc(rargs[i].nb_rw, sizeof(int));
+            rargs[i].latencylist = calloc(rargs[i].nb_rw, sizeof(int));
+            rargs[i].errlist = calloc(rargs[i].nb_rw, sizeof(int));
 
             ret = pthread_create(&rargs[i].tid, NULL, rw_iothread, 
                     (void *)&rargs[i]);
@@ -403,20 +411,34 @@ void rw_thrd_main(int argc, char **argv)
         }
     }
 
+    if (vflag)
+        printf("=====================End TRACE==================\n");
+
     clock_gettime(CLOCK_REALTIME, &end);
 
     int cnt = 0;
     for (i = 0; i < NB_RTHRD; i++) {
         for (j = 0; j < NB_READ/NB_RTHRD; j++) {
-            tlatencylist[cnt] = rargs[i].latencylist[j];
-            tretlist[cnt] = rargs[i].ret[j];
-            terrlist[cnt] = rargs[i].errlist[j];
+            tr_latencylist[cnt] = rargs[i].latencylist[j];
+            tr_retlist[cnt] = rargs[i].ret[j];
+            tr_errlist[cnt] = rargs[i].errlist[j];
+            cnt++;
+        }
+    }
+
+    cnt = 0;
+    for (i = 0; i < NB_WTHRD; i++) {
+        for (j = 0; j < NB_WRITE/NB_WTHRD; j++) {
+            tw_latencylist[cnt] = wargs[i].latencylist[j];
+            tw_retlist[cnt] = wargs[i].ret[j];
+            tw_errlist[cnt] = wargs[i].errlist[j];
             cnt++;
         }
     }
 
     if (sflag) {
-        qsort(tlatencylist, NB_READ, sizeof(int), cmp);
+        qsort(tr_latencylist, NB_READ, sizeof(int), cmp);
+        qsort(tw_latencylist, NB_WRITE, sizeof(int), cmp);
     }
 
     FILE *fp = NULL;
@@ -427,8 +449,20 @@ void rw_thrd_main(int argc, char **argv)
     }
 
     if (NB_RTHRD > 0) {
+        fprintf(fp, "\n*********Read Output**********\n");
+
         for (i = 0; i < NB_READ; i++) {
-            fprintf(fp, "%d\t%d\t%d\n", tretlist[i], terrlist[i], tlatencylist[i]);
+            fprintf(fp, "%6d\t%6d\t%8d\n", tr_retlist[i], tr_errlist[i], 
+                    tr_latencylist[i]);
+        }
+    }
+
+    if (NB_WTHRD > 0) {
+        fprintf(fp, "\n*********Write Output**********\n");
+
+        for (i = 0; i < NB_WRITE; i++) {
+            fprintf(fp, "%6d\t%6d\t%8d\n", tw_retlist[i], tw_errlist[i], 
+                    tw_latencylist[i]);
         }
     }
 
@@ -445,6 +479,5 @@ int main(int argc, char **argv)
 
     rw_thrd_main(argc, argv);
 
-    printf("the end\n");
     return 0;
 }

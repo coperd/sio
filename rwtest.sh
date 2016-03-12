@@ -13,7 +13,7 @@ isMounted=$(mount | grep "/mnt/tmpfs")
 
 if [[ "X" == "X"$isMounted ]]; then
     echo ""
-    #sudo mount -t tmpfs -o size=32m tmpfs /mnt/tmpfs
+    sudo mount -t tmpfs -o size=32m tmpfs /mnt/tmpfs
 fi
 
 
@@ -38,9 +38,11 @@ fi
     #--output m-ro-wo-21.rst
 
 ./sio \
-    --device /dev/sda \
+    --device /dev/loop0 \
+    --warmup 5 \
     --read_threads 1 \
-    --read_nb_blocks 1 \
-    --verbose \
-    --output /mnt/tmpfs/rwtest.rst
-
+    --read_nb_blocks 10 \
+    --write_threads 2 \
+    --write_nb_blocks 20 \
+    --output /mnt/tmpfs/test.rst \
+    --verbose 
