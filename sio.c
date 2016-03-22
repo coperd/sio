@@ -11,6 +11,8 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <getopt.h>
+#include <stdint.h>
+#include <inttypes.h>
 #include <sys/time.h>
 
 //#define DEBUG
@@ -206,10 +208,10 @@ int cmp(const void *a, const void *b)
     return *((int *)a) >= *((int *)b);
 }
 
-int calc_latency(struct timespec, struct timespec);
+int64_t calc_latency(struct timespec, struct timespec);
 
 /* return latency in us */
-int calc_latency(struct timespec start, struct timespec end)
+int64_t calc_latency(struct timespec start, struct timespec end)
 {
     return (end.tv_sec - start.tv_sec) * 1000000 + \
         (end.tv_nsec - start.tv_nsec) / 1000;
@@ -268,9 +270,9 @@ void *rw_iothread(void *arg)
 
     int nb_thread_rw = tinfo->nb_rw;
 
-    struct timespec ts;
-    ts.tv_sec = 0;
-    ts.tv_nsec = 150000000;
+    //struct timespec ts;
+    //ts.tv_sec = 0;
+    //ts.tv_nsec = 100000000;
 
     if (tinfo->is_read) {   /* create read threads */
         for (i = 0; i < nb_thread_rw; i++) {
@@ -288,7 +290,7 @@ void *rw_iothread(void *arg)
             retlist[i] = ret;
             latencylist[i] = calc_latency(rstart, rend);
 
-            nanosleep(&ts, NULL);
+            //nanosleep(&ts, NULL);
         }
     } else {                /* create write threads */
         for (i = 0; i < nb_thread_rw; i++) {
@@ -475,7 +477,7 @@ void rw_thrd_main(int argc, char **argv)
     }
 
     if ((NB_RTHRD > 0 && NB_READ > 0) || (NB_WTHRD > 0 && NB_WRITE > 0)) {
-        printf("Total Latency: %d us\n", calc_latency(start, end));
+        printf("Total Latency: %" PRId64 " us\n", calc_latency(start, end));
     }
 }
 
