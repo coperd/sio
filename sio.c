@@ -268,6 +268,10 @@ void *rw_iothread(void *arg)
 
     int nb_thread_rw = tinfo->nb_rw;
 
+    struct timespec ts;
+    ts.tv_sec = 0;
+    ts.tv_nsec = 150000000;
+
     if (tinfo->is_read) {   /* create read threads */
         for (i = 0; i < nb_thread_rw; i++) {
             off_t randoffset = rand() % RBLK_RANGE;
@@ -283,6 +287,8 @@ void *rw_iothread(void *arg)
 
             retlist[i] = ret;
             latencylist[i] = calc_latency(rstart, rend);
+
+            nanosleep(&ts, NULL);
         }
     } else {                /* create write threads */
         for (i = 0; i < nb_thread_rw; i++) {
@@ -412,7 +418,7 @@ void rw_thrd_main(int argc, char **argv)
     }
 
     if (vflag)
-        printf("=====================End TRACE==================\n");
+        printf("=====================End TRACE====================\n");
 
     clock_gettime(CLOCK_REALTIME, &end);
 
@@ -449,24 +455,26 @@ void rw_thrd_main(int argc, char **argv)
     }
 
     if (NB_RTHRD > 0) {
-        fprintf(fp, "\n*********Read Output**********\n");
+        fprintf(fp, "###Read Latency Start###\n");
 
         for (i = 0; i < NB_READ; i++) {
             fprintf(fp, "%6d\t%6d\t%8d\n", tr_retlist[i], tr_errlist[i], 
                     tr_latencylist[i]);
         }
+        fprintf(fp, "###Read Latency End###\n");
     }
 
     if (NB_WTHRD > 0) {
-        fprintf(fp, "\n*********Write Output**********\n");
+        fprintf(fp, "###Write Latency Start###\n");
 
         for (i = 0; i < NB_WRITE; i++) {
             fprintf(fp, "%6d\t%6d\t%8d\n", tw_retlist[i], tw_errlist[i], 
                     tw_latencylist[i]);
         }
+        fprintf(fp, "###Write Latency End###\n");
     }
 
-    if (NB_RTHRD > 0 && NB_READ > 0) {
+    if ((NB_RTHRD > 0 && NB_READ > 0) || (NB_WTHRD > 0 && NB_WRITE > 0)) {
         printf("Total Latency: %d us\n", calc_latency(start, end));
     }
 }
