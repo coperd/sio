@@ -84,6 +84,7 @@ struct thread_info
     int *ret;           /* record the ret value each of read/write */
     int *errlist;
     int *latencylist;   /* record the latency info of each read request */
+    off_t *oftlist;
 };
 
 void usage()
@@ -264,6 +265,7 @@ void *rw_iothread(void *arg)
     int *retlist = tinfo->ret;
     int *latencylist = tinfo->latencylist;
     int *errlist = tinfo->errlist;
+    off_t *oftlist = tinfo->oftlist;
 
     posix_memalign(&buf, iosize, STRIPE_SZ); /* BLOCK size alignment */
     memset(buf, 0, iosize);
@@ -281,17 +283,21 @@ void *rw_iothread(void *arg)
             off_t randoffset = rand() % RBLK_RANGE;
             clock_gettime(CLOCK_REALTIME, &rstart);
             int ret = pread(fd, buf, iosize, randoffset*CHUNK_SZ);
-            errlist[i] = errno;
             clock_gettime(CLOCK_REALTIME, &rend);
+            if (ret == -1) {
+                errlist[i] = errno;
+                handle_error("pread");
+            } else {
+                errlist[i] = 0;
+            }
+            oftlist[i] = randoffset*CHUNK_SZ/512;
+            retlist[i] = ret;
+            latencylist[i] = calc_latency(rstart, rend);
+
             if (vflag) {
                 printf("pread  %-6d ret: %-6d errno: %-2d offset: %-8ld\n", 
                         ++read_cnt, ret, errlist[i], randoffset*CHUNK_SZ/512);
             }
-            if (ret == -1) handle_error("pread");
-
-            retlist[i] = ret;
-            latencylist[i] = calc_latency(rstart, rend);
-
             //nanosleep(&ts, NULL);
         }
     } else {                /* create write threads */
@@ -299,15 +305,21 @@ void *rw_iothread(void *arg)
             off_t randoffset = RBLK_RANGE + rand() % WBLK_RANGE;
             clock_gettime(CLOCK_REALTIME, &rstart);
             int ret = pwrite(fd, buf, iosize, randoffset*CHUNK_SZ);
-            errlist[i] = errno;
             clock_gettime(CLOCK_REALTIME, &rend);
+            if (ret == -1) {
+                handle_error("pwrite");
+                errlist[i] = errno;
+            } else {
+                errlist[i] = 0;
+            }
+            oftlist[i] = randoffset*CHUNK_SZ/512;
+            retlist[i] = ret;
+            latencylist[i] = calc_latency(rstart, rend);
+
             if (vflag) {
                 printf("pwrite %-6d ret: %-6d errno: %-2d offset: %-8ld\n", 
                         ++write_cnt, ret, errlist[i], randoffset*CHUNK_SZ/512);
             }
-            if (ret == -1) handle_error("pwrite");
-            retlist[i] = ret;
-            latencylist[i] = calc_latency(rstart, rend);
         }
     }
 
@@ -324,10 +336,12 @@ void rw_thrd_main(int argc, char **argv)
     int *tr_latencylist = calloc(NB_READ, sizeof(int));
     int *tr_retlist = calloc(NB_READ, sizeof(int));
     int *tr_errlist = calloc(NB_READ, sizeof(int));
+    off_t *tr_oftlist = calloc(NB_READ, sizeof(off_t));
 
     int *tw_latencylist = calloc(NB_WRITE, sizeof(int));
     int *tw_retlist = calloc(NB_WRITE, sizeof(int));
     int *tw_errlist = calloc(NB_WRITE, sizeof(int));
+    off_t *tw_oftlist = calloc(NB_READ, sizeof(off_t));
 
     int i, j, ret;
 
@@ -372,6 +386,7 @@ void rw_thrd_main(int argc, char **argv)
             wargs[i].ret = calloc(wargs[i].nb_rw, sizeof(int));
             wargs[i].latencylist = calloc(rargs[i].nb_rw, sizeof(int));
             wargs[i].errlist = calloc(wargs[i].nb_rw, sizeof(int));
+            wargs[i].oftlist = calloc(wargs[i].nb_rw, sizeof(off_t));
 
             ret = pthread_create(&wargs[i].tid, NULL, rw_iothread, 
                     (void *)&wargs[i]);
@@ -398,6 +413,7 @@ void rw_thrd_main(int argc, char **argv)
             rargs[i].ret = calloc(rargs[i].nb_rw, sizeof(int));
             rargs[i].latencylist = calloc(rargs[i].nb_rw, sizeof(int));
             rargs[i].errlist = calloc(rargs[i].nb_rw, sizeof(int));
+            rargs[i].oftlist = calloc(rargs[i].nb_rw, sizeof(off_t));
 
             ret = pthread_create(&rargs[i].tid, NULL, rw_iothread, 
                     (void *)&rargs[i]);
@@ -432,6 +448,7 @@ void rw_thrd_main(int argc, char **argv)
             tr_latencylist[cnt] = rargs[i].latencylist[j];
             tr_retlist[cnt] = rargs[i].ret[j];
             tr_errlist[cnt] = rargs[i].errlist[j];
+            tr_oftlist[cnt] = rargs[i].oftlist[j];
             cnt++;
         }
     }
@@ -441,6 +458,7 @@ void rw_thrd_main(int argc, char **argv)
         for (j = 0; j < NB_WRITE/NB_WTHRD; j++) {
             tw_latencylist[cnt] = wargs[i].latencylist[j];
             tw_retlist[cnt] = wargs[i].ret[j];
+            tw_errlist[cnt] = wargs[i].errlist[j];
             tw_errlist[cnt] = wargs[i].errlist[j];
             cnt++;
         }
@@ -462,8 +480,8 @@ void rw_thrd_main(int argc, char **argv)
         fprintf(fp, "###Read Latency Start###\n");
 
         for (i = 0; i < NB_READ; i++) {
-            fprintf(fp, "%6d\t%6d\t%8d\n", tr_retlist[i], tr_errlist[i], 
-                    tr_latencylist[i]);
+            fprintf(fp, "%-8ld\t%-6d\t%-6d\t%-8d\n", tr_oftlist[i], tr_retlist[i], 
+                    tr_errlist[i], tr_latencylist[i]);
         }
         fprintf(fp, "###Read Latency End###\n");
     }
@@ -472,8 +490,8 @@ void rw_thrd_main(int argc, char **argv)
         fprintf(fp, "###Write Latency Start###\n");
 
         for (i = 0; i < NB_WRITE; i++) {
-            fprintf(fp, "%6d\t%6d\t%8d\n", tw_retlist[i], tw_errlist[i], 
-                    tw_latencylist[i]);
+            fprintf(fp, "%-8ld\t%-6d\t%-6d\t%-8d\n", tw_oftlist[i], tw_retlist[i], 
+                    tw_errlist[i], tw_latencylist[i]);
         }
         fprintf(fp, "###Write Latency End###\n");
     }
