@@ -384,6 +384,7 @@ void rw_thrd_main(int argc, char **argv)
     if (NB_WARMUP > 0) {
 
         warmup_args->fd = FD_WRITE;
+        warmup_args->fd = FD;
         warmup_args->iosize = CHUNK_SZ;
         warmup_args->is_read = false;
         warmup_args->nb_rw = NB_WARMUP;
@@ -410,6 +411,7 @@ void rw_thrd_main(int argc, char **argv)
 
         for (i = 0; i < NB_WTHRD; i++) {
             wargs[i].fd = FD_WRITE;
+            wargs[i].fd = FD;
             wargs[i].iosize = CHUNK_SZ;
             assert(NB_WTHRD > 0);
             wargs[i].nb_rw = NB_WRITE/NB_WTHRD;
