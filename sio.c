@@ -64,6 +64,7 @@ long BLK_RANGE = 0;          /* block range */
 long RBLK_RANGE = 0;         /* read block range */
 long WBLK_RANGE = 0;         /* range range */
 int FD = -1;                 /* dev fd */
+int FD_WRITE = -1;                 /* dev fd */
 char dev[32] = {'\0'};       /* device name */
 char rstfile[64] = {'\0'};   /* output file name */
 
@@ -72,6 +73,8 @@ int sflag = 0;
 /* counter */
 int write_cnt = 0;
 int read_cnt = 0;
+
+int counter = 0;
 
 struct thread_info
 {
@@ -127,6 +130,9 @@ void parse_param(int argc, char **argv)
             case 'd':
                 strcpy(dev, optarg); 
                 printf("DISK: %s\n", dev);
+                FD_WRITE = open("/dev/sda", O_RDWR | O_DIRECT | O_SYNC);
+                if (FD_WRITE == -1)
+                    handle_error("open /dev/sda");
                 FD = open(dev, O_RDWR | O_DIRECT | O_SYNC);
                 if (FD == -1) 
                     handle_error("open");
@@ -241,9 +247,10 @@ void *warmup_thread(void *args)
     for (i = 0; i < nb_thread_rw; i++) {
         assert(iosize % CHUNK_SZ == 0);
         int ret = pwrite(fd, buf, iosize, offset);
+        //int ret = pread(fd, buf, iosize, offset);
         if (ret == -1) handle_error("pwrite");
         //printf("write: %ld success\n", offset);
-        offset += STRIPE_SZ/*iosize*/;
+        offset += /*STRIPE_SZ*/iosize;
     }
 
 #ifdef DEBUG
@@ -282,7 +289,7 @@ void *rw_iothread(void *arg)
         for (i = 0; i < nb_thread_rw; i++) {
             off_t randoffset = rand() % RBLK_RANGE;
             clock_gettime(CLOCK_REALTIME, &rstart);
-            int ret = pread(fd, buf, iosize, randoffset*CHUNK_SZ);
+            int ret = pread(fd, buf, iosize, randoffset*STRIPE_SZ);
             clock_gettime(CLOCK_REALTIME, &rend);
             if (ret == -1) {
                 errlist[i] = errno;
@@ -351,7 +358,7 @@ void rw_thrd_main(int argc, char **argv)
 
     if (NB_WARMUP > 0) {
 
-        warmup_args->fd = FD;
+        warmup_args->fd = FD_WRITE;
         warmup_args->iosize = CHUNK_SZ;
         warmup_args->is_read = false;
         warmup_args->nb_rw = NB_WARMUP;
@@ -377,14 +384,14 @@ void rw_thrd_main(int argc, char **argv)
 #endif
 
         for (i = 0; i < NB_WTHRD; i++) {
-            wargs[i].fd = FD;
+            wargs[i].fd = FD_WRITE;
             wargs[i].iosize = CHUNK_SZ;
             assert(NB_WTHRD > 0);
             wargs[i].nb_rw = NB_WRITE/NB_WTHRD;
             wargs[i].is_read = false;
             wargs[i].ret = 0;
             wargs[i].ret = calloc(wargs[i].nb_rw, sizeof(int));
-            wargs[i].latencylist = calloc(rargs[i].nb_rw, sizeof(int));
+            wargs[i].latencylist = calloc(wargs[i].nb_rw, sizeof(int));
             wargs[i].errlist = calloc(wargs[i].nb_rw, sizeof(int));
             wargs[i].oftlist = calloc(wargs[i].nb_rw, sizeof(off_t));
 
