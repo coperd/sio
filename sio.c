@@ -295,7 +295,7 @@ void *rw_iothread(void *arg)
 
     struct timespec rts, wts;
     rts.tv_sec = 0;
-    rts.tv_nsec = 25000000;
+    rts.tv_nsec = 40000000;
 
     wts.tv_sec = 0;
     wts.tv_nsec = 40000000; // 40ms
@@ -483,7 +483,7 @@ void rw_thrd_main(int argc, char **argv)
             tw_latencylist[cnt] = wargs[i].latencylist[j];
             tw_retlist[cnt] = wargs[i].ret[j];
             tw_errlist[cnt] = wargs[i].errlist[j];
-            tw_errlist[cnt] = wargs[i].errlist[j];
+            tw_oftlist[cnt] = wargs[i].oftlist[j];
             cnt++;
         }
     }

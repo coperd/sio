@@ -52,7 +52,7 @@ for disk in "md127"; do #"sdb" "sdc" "sdd"; do
     ./sio \
         --device /dev/$disk \
         --read_threads 4 \
-        --read_nb_blocks 10000 \
+        --read_nb_blocks 8000 \
         --write_threads 1 \
         --write_nb_blocks 2000 \
         --verbose \
