@@ -37,12 +37,52 @@ fi
     #--read_nb_blocks 1000 \
     #--output m-ro-wo-21.rst
 
+
+BASENAME=/mnt/tmpfs/
+
+# run wo first
+for i in $(seq 5); do
+    ./sio \
+        --device /dev/sda \
+        --write_threads 1 \
+        --write_nb_blocks 1000 \
+        --output /mnt/tmpfs/wo-sVSSIM-d1-$i.rst 
+    sleep 3
+    sync;sync;sync;
+    sleep 3
+done
+
+
+# run warmup threads to build mapping table
 ./sio \
-    --device /dev/loop0 \
-    --warmup 5 \
-    --read_threads 1 \
-    --read_nb_blocks 10 \
-    --write_threads 2 \
-    --write_nb_blocks 20 \
-    --output /mnt/tmpfs/test.rst \
-    --verbose 
+    --device /dev/sda \
+    --warmup 92160
+
+sleep 10
+
+# run rw second
+for i in $(seq 5); do
+    ./sio \
+        --device /dev/sda \
+        --read_threads 1 \
+        --read_nb_blocks 1000 \
+        --write_threads 1 \
+        --write_nb_blocks 1000 \
+        --output /mnt/tmpfs/rw-sVSSIM-d1-$i.rst 
+    sleep 3
+    sync;sync;sync;
+    sleep 3
+done
+
+# run ro last
+for i in $(seq 5); do
+    ./sio \
+        --device /dev/sda \
+        --read_threads 1 \
+        --read_nb_blocks 1000 \
+        --output /mnt/tmpfs/ro-sVSSIM-d1-$i.rst 
+    sleep 3
+    sync;sync;sync;
+    sleep 3
+done
+

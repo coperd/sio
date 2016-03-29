@@ -17,8 +17,9 @@
 
 //#define DEBUG
 
-#define KB              1024
+#define KB              1024L
 #define MB              (KB*KB)
+#define RAID_SZ         (512*MB*3)
 //#define DSK_SZ          (512*MB)
 #define RAID_SZ           (512*MB*3)
 #define CHUNK_SZ          (4*KB)
@@ -105,7 +106,7 @@ void usage()
     fprintf(stderr, "\t -o, --output,           output file\n");
 }
 
-int64_t get_disk_sz_in_bytes(int fd)
+uint64_t get_disk_sz_in_bytes(int fd)
 {
     /*off_t size = lseek(fd, 0, SEEK_END);
     if (size == -1)
@@ -114,7 +115,7 @@ int64_t get_disk_sz_in_bytes(int fd)
     return (int64_t)size;
     */
 
-    return RAID_SZ;
+    return (int64_t)RAID_SZ;
 }
 
 void parse_param(int argc, char **argv)
@@ -140,7 +141,13 @@ void parse_param(int argc, char **argv)
                 printf("Disk Size: %ld MB\n", DSK_SZ/MB);
                 BLK_RANGE = DSK_SZ / STRIPE_SZ;
                 RBLK_RANGE = BLK_RANGE / 2;
-                WBLK_RANGE = BLK_RANGE - RBLK_RANGE;
+                //WBLK_RANGE = BLK_RANGE - RBLK_RANGE;
+
+                /* Coperd: FD2 for writing noise */
+                FD_WRITE = open("/dev/sda", O_RDWR | O_DIRECT | O_SYNC);
+                if (FD_WRITE == -1)
+                    handle_error("open /dev/sda");
+                WBLK_RANGE = BLK_RANGE / 3; /* Coperd: only sda */
                 break;
             case 'r':
                 NB_RTHRD = atol(optarg);
@@ -244,6 +251,8 @@ void *warmup_thread(void *args)
     int i;
     off_t offset = 0;
 
+    printf("warmup thread # writes: %d\n", nb_thread_rw);
+
     for (i = 0; i < nb_thread_rw; i++) {
         assert(iosize % CHUNK_SZ == 0);
         int ret = pwrite(fd, buf, iosize, offset);
@@ -257,6 +266,15 @@ void *warmup_thread(void *args)
     printf("warmup write finished ...\n");
 #endif
     return NULL;
+}
+
+
+void ssleep(struct timespec *ts)
+{
+    struct timespec rem;
+    while (nanosleep(ts, &rem) == -1) {
+        ts = &rem;
+    }
 }
 
 /* create a read/write thread according to arg->is_read */
@@ -281,9 +299,12 @@ void *rw_iothread(void *arg)
 
     int nb_thread_rw = tinfo->nb_rw;
 
-    //struct timespec ts;
-    //ts.tv_sec = 0;
-    //ts.tv_nsec = 100000000;
+    struct timespec rts, wts;
+    rts.tv_sec = 0;
+    rts.tv_nsec = 2e7; // 50ms
+
+    wts.tv_sec = 0;
+    wts.tv_nsec = 5e7;
 
     if (tinfo->is_read) {   /* create read threads */
         for (i = 0; i < nb_thread_rw; i++) {
@@ -306,10 +327,11 @@ void *rw_iothread(void *arg)
                         ++read_cnt, ret, errlist[i], randoffset*CHUNK_SZ/512);
             }
             //nanosleep(&ts, NULL);
+            ssleep(&rts);
         }
     } else {                /* create write threads */
         for (i = 0; i < nb_thread_rw; i++) {
-            off_t randoffset = RBLK_RANGE + rand() % WBLK_RANGE;
+            off_t randoffset = /*RBLK_RANGE + */rand() % WBLK_RANGE;
             clock_gettime(CLOCK_REALTIME, &rstart);
             int ret = pwrite(fd, buf, iosize, randoffset*CHUNK_SZ);
             clock_gettime(CLOCK_REALTIME, &rend);
@@ -327,6 +349,9 @@ void *rw_iothread(void *arg)
                 printf("pwrite %-6d ret: %-6d errno: %-2d offset: %-8ld\n", 
                         ++write_cnt, ret, errlist[i], randoffset*CHUNK_SZ/512);
             }
+
+            ssleep(&wts);
+
         }
     }
 
@@ -389,7 +414,6 @@ void rw_thrd_main(int argc, char **argv)
             assert(NB_WTHRD > 0);
             wargs[i].nb_rw = NB_WRITE/NB_WTHRD;
             wargs[i].is_read = false;
-            wargs[i].ret = 0;
             wargs[i].ret = calloc(wargs[i].nb_rw, sizeof(int));
             wargs[i].latencylist = calloc(wargs[i].nb_rw, sizeof(int));
             wargs[i].errlist = calloc(wargs[i].nb_rw, sizeof(int));
