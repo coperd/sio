@@ -17,11 +17,10 @@
 
 //#define DEBUG
 
-#define KB              1024L
+#define KB              (1024L)
 #define MB              (KB*KB)
 #define RAID_SZ         (512*MB*3)
 //#define DSK_SZ          (512*MB)
-#define RAID_SZ           (512*MB*3)
 #define CHUNK_SZ          (4*KB)
 #define STRIPE_SZ          (3*CHUNK_SZ)
 //#define BLK_RANGE       (DSK_SZ/CHUNK_SZ)
@@ -131,23 +130,18 @@ void parse_param(int argc, char **argv)
             case 'd':
                 strcpy(dev, optarg); 
                 printf("DISK: %s\n", dev);
-                FD_WRITE = open("/dev/sda", O_RDWR | O_DIRECT | O_SYNC);
-                if (FD_WRITE == -1)
-                    handle_error("open /dev/sda");
                 FD = open(dev, O_RDWR | O_DIRECT | O_SYNC);
-                if (FD == -1) 
+                if (FD == -1)  {
                     handle_error("open");
+                    usage();
+                    exit(EXIT_FAILURE);
+                }
                 DSK_SZ = get_disk_sz_in_bytes(FD);
                 printf("Disk Size: %ld MB\n", DSK_SZ/MB);
                 BLK_RANGE = DSK_SZ / STRIPE_SZ;
                 RBLK_RANGE = BLK_RANGE / 2;
-                //WBLK_RANGE = BLK_RANGE - RBLK_RANGE;
+                WBLK_RANGE = RBLK_RANGE;
 
-                /* Coperd: FD2 for writing noise */
-                FD_WRITE = open("/dev/sda", O_RDWR | O_DIRECT | O_SYNC);
-                if (FD_WRITE == -1)
-                    handle_error("open /dev/sda");
-                WBLK_RANGE = BLK_RANGE / 3; /* Coperd: only sda */
                 break;
             case 'r':
                 NB_RTHRD = atol(optarg);
@@ -259,7 +253,7 @@ void *warmup_thread(void *args)
         //int ret = pread(fd, buf, iosize, offset);
         if (ret == -1) handle_error("pwrite");
         //printf("write: %ld success\n", offset);
-        offset += /*STRIPE_SZ*/iosize;
+        offset += STRIPE_SZ; /*iosize*/
     }
 
 #ifdef DEBUG
@@ -292,7 +286,7 @@ void *rw_iothread(void *arg)
     int *errlist = tinfo->errlist;
     off_t *oftlist = tinfo->oftlist;
 
-    posix_memalign(&buf, iosize, STRIPE_SZ); /* BLOCK size alignment */
+    posix_memalign(&buf, iosize, STRIPE_SZ); /* STRIPE size alignment */
     memset(buf, 0, iosize);
 
     srand(time(NULL));
@@ -301,10 +295,10 @@ void *rw_iothread(void *arg)
 
     struct timespec rts, wts;
     rts.tv_sec = 0;
-    rts.tv_nsec = 2e7; // 50ms
+    rts.tv_nsec = 25000000;
 
     wts.tv_sec = 0;
-    wts.tv_nsec = 5e7;
+    wts.tv_nsec = 40000000; // 40ms
 
     if (tinfo->is_read) {   /* create read threads */
         for (i = 0; i < nb_thread_rw; i++) {
@@ -326,14 +320,13 @@ void *rw_iothread(void *arg)
                 printf("pread  %-6d ret: %-6d errno: %-2d offset: %-8ld\n", 
                         ++read_cnt, ret, errlist[i], randoffset*CHUNK_SZ/512);
             }
-            //nanosleep(&ts, NULL);
             ssleep(&rts);
         }
     } else {                /* create write threads */
         for (i = 0; i < nb_thread_rw; i++) {
-            off_t randoffset = /*RBLK_RANGE + */rand() % WBLK_RANGE;
+            off_t randoffset = rand() % WBLK_RANGE;
             clock_gettime(CLOCK_REALTIME, &rstart);
-            int ret = pwrite(fd, buf, iosize, randoffset*CHUNK_SZ);
+            int ret = pwrite(fd, buf, iosize, randoffset*STRIPE_SZ);
             clock_gettime(CLOCK_REALTIME, &rend);
             if (ret == -1) {
                 handle_error("pwrite");
@@ -383,7 +376,6 @@ void rw_thrd_main(int argc, char **argv)
 
     if (NB_WARMUP > 0) {
 
-        warmup_args->fd = FD_WRITE;
         warmup_args->fd = FD;
         warmup_args->iosize = CHUNK_SZ;
         warmup_args->is_read = false;
@@ -398,7 +390,7 @@ void rw_thrd_main(int argc, char **argv)
 
         pthread_join(warmup_args->tid, NULL);
 
-        sleep(5);
+        sleep(2);
     }
 
     clock_gettime(CLOCK_REALTIME, &start);
@@ -406,11 +398,10 @@ void rw_thrd_main(int argc, char **argv)
     /* init write threads */
     if (NB_WTHRD > 0 && NB_WRITE > 0) {
 #ifdef DEBUG
-        printf("crating write threads...\n");
+        printf("creating write threads...\n");
 #endif
 
         for (i = 0; i < NB_WTHRD; i++) {
-            wargs[i].fd = FD_WRITE;
             wargs[i].fd = FD;
             wargs[i].iosize = CHUNK_SZ;
             assert(NB_WTHRD > 0);
