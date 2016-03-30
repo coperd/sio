@@ -40,7 +40,7 @@ echo "BEGIN RW TEST"
         #--write_nb_blocks 2000 \
 
 # all write threads are targeting /dev/sda implicitly
-for disk in "md127"; do #"sdb" "sdc" "sdd"; do
+for disk in "md0"; do #"sdb" "sdc" "sdd"; do
     if [[ "X""$1" == "X" ]]; then
         for i in $(seq 1); do
             ./sio \
@@ -51,11 +51,11 @@ for disk in "md127"; do #"sdb" "sdc" "sdd"; do
 
     ./sio \
         --device /dev/$disk \
-        --read_threads 4 \
-        --read_nb_blocks 8000 \
+        --read_threads 400 \
+        --read_nb_blocks 800000 \
         --write_threads 1 \
         --write_nb_blocks 2000 \
         --verbose \
         --sort \
-        --output /mnt/tmpfs/gc-blocking-d100-${disk}.rst 
+        --output /mnt/tmpfs/gc-eio-d100-${disk}.rst 
 done
