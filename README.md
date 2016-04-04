@@ -15,7 +15,8 @@ Simple IO bench
 
 **TODOs**
 
-  * add flexbile block size support
+  * ~~add flexbile block size support~~
   * add different working mode
-  * add flexible way to get disk size (without introducing extra r/w operations 
-          inside qemu), currently 512MB is hardcoded (only for our SSD testing).
+  * ~~add flexible way to get disk size (without introducing extra r/w operations 
+          inside qemu), currently 512MB is hardcoded (only for our SSD
+              testing).~~
