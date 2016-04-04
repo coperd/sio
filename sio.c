@@ -41,7 +41,7 @@ static struct option long_options[] =
 {
     { "help",            no_argument,       0, 'h' },
     { "device",          required_argument, 0, 'd' },
-    { "bock_size",       required_argument, 0, 'b' },
+    { "block_size",      required_argument, 0, 'b' },
     { "read_threads",    required_argument, 0, 'r' },
     { "read_nb_blocks",  required_argument, 0, 'p' },
     { "write_threads",   required_argument, 0, 'w' },
@@ -53,15 +53,16 @@ static struct option long_options[] =
     { 0,                 0,                 0, 0   }
 };
 
-char * const short_options = "hvsd:r:p:w:q:m:o:";
+char * const short_options = "hvsb:d:r:p:w:q:m:o:";
 
+/* Global Variables Definition */
 long NB_READ = 0;            /* # of total reads in blocks (4K) */
 long NB_WRITE = 0;           /* # of total writes in blocks (4K) */
 long NB_WARMUP = 0;          /* # of writes for warmup in blocks (4K) */
 long NB_RTHRD = 0;           /* # of read threads */
 long NB_WTHRD = 0;           /* # of write threads */
 long DSK_SZ = 0;             /* disk size in bytes */
-long BLK_SZ = STRIPE_SZ;     /* block size used to do read/write */
+long BLK_SZ = STRIPE_SZ;     /* block size used to do r/w */
 long BLK_RANGE = 0;          /* block range */
 long RBLK_RANGE = 0;         /* read block range */
 long WBLK_RANGE = 0;         /* range range */
@@ -75,8 +76,6 @@ int sflag = 0;
 /* counter */
 int write_cnt = 0;
 int read_cnt = 0;
-
-int counter = 0;
 
 struct thread_info
 {
@@ -97,7 +96,8 @@ void usage()
     fprintf(stderr, "Usage: ./sio\n");
     fprintf(stderr, "\t -h, --help,             print help information\n");
     fprintf(stderr, "\t -d, --device,           device to operate on\n");
-    fprintf(stderr, "\t -m, --warmup,           # of warmup writes in blocks\n");
+    fprintf(stderr, "\t -b, --block_size,       block size in 4KB unit\n");
+    fprintf(stderr, "\t -m, --warmup,           # of writes to warmup in 4K blocks\n");
     fprintf(stderr, "\t -r, --read_threads,     # of read threads\n");
     fprintf(stderr, "\t -p, --read_nb_blocks,   # of reads in 4K blocks\n");
     fprintf(stderr, "\t -w, --write_threads,    # of write threads\n");
@@ -114,7 +114,6 @@ uint64_t get_disk_sz_in_bytes(int fd)
         handle_error("lseek");
 
     return (int64_t)size;
-
 }
 
 void parse_param(int argc, char **argv)
@@ -130,11 +129,11 @@ void parse_param(int argc, char **argv)
             case 'd':
                 strncpy(dev, optarg, 32); 
                 printf("DISK: %s\n", dev);
-
                 break;
             case 'b':
                 BLK_SZ = atol(optarg);
-                printf("BLK_SZ: %ld\n", BLK_SZ);
+                BLK_SZ *= 4*KB;
+                printf("BLK_SZ: %ld KB\n", BLK_SZ/KB);
                 break;
             case 'r':
                 NB_RTHRD = atol(optarg);
@@ -179,6 +178,7 @@ void parse_param(int argc, char **argv)
         usage();
         exit(EXIT_FAILURE);
     }
+
     DSK_SZ = get_disk_sz_in_bytes(FD);
     printf("Disk Size: %ld MB\n", DSK_SZ/MB);
 
@@ -301,7 +301,7 @@ void *rw_iothread(void *arg)
 
     struct timespec rts, wts;
     rts.tv_sec = 0;
-    rts.tv_nsec = 25000000;
+    rts.tv_nsec = 40000000;
 
     wts.tv_sec = 0;
     wts.tv_nsec = 40000000; // 40ms
@@ -326,7 +326,7 @@ void *rw_iothread(void *arg)
                 printf("pread  %-6d ret: %-6d errno: %-2d offset: %-8ld\n", 
                         ++read_cnt, ret, errlist[i], randoffset*CHUNK_SZ/512);
             }
-            ssleep(&rts);
+            //ssleep(&rts);
         }
     } else {                /* create write threads */
         for (i = 0; i < nb_thread_rw; i++) {
@@ -349,7 +349,7 @@ void *rw_iothread(void *arg)
                         ++write_cnt, ret, errlist[i], randoffset*CHUNK_SZ/512);
             }
 
-            ssleep(&wts);
+            //ssleep(&wts);
 
         }
     }
@@ -488,7 +488,6 @@ void rw_thrd_main(int argc, char **argv)
         for (j = 0; j < NB_WRITE/NB_WTHRD; j++) {
             tw_latencylist[cnt] = wargs[i].latencylist[j];
             tw_retlist[cnt] = wargs[i].ret[j];
-            tw_errlist[cnt] = wargs[i].errlist[j];
             tw_errlist[cnt] = wargs[i].errlist[j];
             tw_oftlist[cnt] = wargs[i].oftlist[j];
             cnt++;
