@@ -19,16 +19,9 @@
 
 #define KB              (1024L)
 #define MB              (KB*KB)
-#define RAID_SZ         (512*MB*3)
-//#define DSK_SZ          (512*MB)
-#define CHUNK_SZ          (4*KB)
-#define STRIPE_SZ          (4*CHUNK_SZ)
-//#define BLK_RANGE       (DSK_SZ/CHUNK_SZ)
-
-//#define RBLK_RANGE      (256*MB/CHUNK_SZ)
-//#define WBLK_RANGE      (BLK_RANGE-RBLK_RANGE)
-
-//#define DSKDEV          "/dev/sda"
+#define CHUNK_SZ        (4*KB)
+#define STRIPE_SZ       (3*CHUNK_SZ)
+#define ALIGNMENT       512 // O_DIRECT
 
 #define handle_error_en(en, msg) \
     do { errno = en; perror(msg); exit(EXIT_FAILURE); } while (0)
@@ -110,10 +103,24 @@ void usage()
 uint64_t get_disk_sz_in_bytes(int fd)
 {
     off_t size = lseek(fd, 0, SEEK_END);
-    if (size == -1)
+    if (size == -1) {
         handle_error("lseek");
+    }
 
     return (int64_t)size;
+}
+
+void sio_memalign(void **memptr, size_t alignment, size_t size)
+{
+    int ret = posix_memalign(memptr, alignment, size);
+    if (ret == EINVAL) {
+        fprintf(stderr, "Error: the alignment argument was not a power of two, \
+                or was not a multile of sizeof(void *)\n");
+        exit(EXIT_FAILURE);
+    } else if (ret == ENOMEM) {
+        fprintf(stderr, "Error: Insufficient memory for allocation\n");
+        exit(EXIT_FAILURE);
+    }
 }
 
 void parse_param(int argc, char **argv)
@@ -133,7 +140,6 @@ void parse_param(int argc, char **argv)
             case 'b':
                 BLK_SZ = atol(optarg);
                 BLK_SZ *= 4*KB;
-                printf("BLK_SZ: %ld KB\n", BLK_SZ/KB);
                 break;
             case 'r':
                 NB_RTHRD = atol(optarg);
@@ -180,10 +186,11 @@ void parse_param(int argc, char **argv)
     }
 
     DSK_SZ = get_disk_sz_in_bytes(FD);
-    printf("Disk Size: %ld MB\n", DSK_SZ/MB);
+    printf("Disk Size: %ld MB\n", DSK_SZ/(MB));
+    printf("BLK_SZ: %ld KB\n", BLK_SZ/(KB));
 
     BLK_RANGE = DSK_SZ / BLK_SZ;
-    RBLK_RANGE = BLK_RANGE / 2;
+    RBLK_RANGE = BLK_RANGE;
     WBLK_RANGE = RBLK_RANGE;
 
     if (vflag)
@@ -236,30 +243,34 @@ int64_t calc_latency(struct timespec start, struct timespec end)
 
 void *warmup_thread(void *args)
 {
-#ifdef DEBUG
+#ifdef DEUBG
     printf("warmup_thread starts\n");
 #endif
+
     void *buf;
     struct thread_info *tinfo = (struct thread_info *)args;
     int fd = tinfo->fd;
     int iosize = tinfo->iosize;
+    printf("iosize=%d, BLK_SZ = %ld\n", iosize, BLK_SZ);
     int nb_thread_rw = tinfo->nb_rw;
+    sio_memalign(&buf, ALIGNMENT, iosize);
 
-    posix_memalign(&buf, iosize, BLK_SZ);
-    memset(buf, 0, iosize);
+    memset(buf, 1, iosize);
 
     int i;
     off_t offset = 0;
 
-    printf("warmup thread # writes: %d\n", nb_thread_rw);
+    printf("warmup thread # writes: %d, fd=%d\n", nb_thread_rw, fd);
 
     for (i = 0; i < nb_thread_rw; i++) {
-        assert(iosize % CHUNK_SZ == 0);
         int ret = pwrite(fd, buf, iosize, offset);
         //int ret = pread(fd, buf, iosize, offset);
-        if (ret == -1) handle_error("pwrite");
-        //printf("write: %ld success\n", offset);
-        offset += BLK_SZ; /*iosize*/
+        if (ret == -1) {
+            handle_error("warmup pwrite");
+            exit(0);
+        }
+        printf("warmup write: %ld success\n", offset);
+        offset += BLK_SZ; 
     }
 
 #ifdef DEBUG
@@ -280,6 +291,7 @@ void ssleep(struct timespec *ts)
 /* create a read/write thread according to arg->is_read */
 void *rw_iothread(void *arg)
 {
+    sleep(5);
     int i;
     void *buf;
     struct timespec rstart, rend;
@@ -292,19 +304,21 @@ void *rw_iothread(void *arg)
     int *errlist = tinfo->errlist;
     off_t *oftlist = tinfo->oftlist;
 
-    posix_memalign(&buf, iosize, BLK_SZ); /* STRIPE size alignment */
+    sio_memalign(&buf, ALIGNMENT, iosize); /* STRIPE size alignment */
     memset(buf, 0, iosize);
 
     srand(time(NULL));
 
     int nb_thread_rw = tinfo->nb_rw;
 
+#if 0
     struct timespec rts, wts;
     rts.tv_sec = 0;
     rts.tv_nsec = 40000000;
 
     wts.tv_sec = 0;
     wts.tv_nsec = 40000000; // 40ms
+#endif
 
     if (tinfo->is_read) {   /* create read threads */
         for (i = 0; i < nb_thread_rw; i++) {
@@ -383,10 +397,11 @@ void rw_thrd_main(int argc, char **argv)
     if (NB_WARMUP > 0) {
 
         warmup_args->fd = FD;
-        warmup_args->iosize = BLK_SZ/*CHUNK_SZ*/;
+        warmup_args->iosize = CHUNK_SZ;
         warmup_args->is_read = false;
         warmup_args->nb_rw = NB_WARMUP;
 
+        printf("creating warmup thread..\n");
         ret = pthread_create(&warmup_args->tid, NULL, warmup_thread, 
                 (void *)warmup_args);
 
@@ -394,9 +409,14 @@ void rw_thrd_main(int argc, char **argv)
             handle_error("pthread_create");
         }
 
-        pthread_join(warmup_args->tid, NULL);
+        printf("joining warmup thread.., warmup_args->tid=%ld\n", warmup_args->tid);
+        ret = pthread_join(warmup_args->tid, NULL);
+        if (ret != 0) {
+            handle_error("pthread_join");
+        }
 
-        sleep(2);
+
+        printf("sleeping here .. \n");
     }
 
     clock_gettime(CLOCK_REALTIME, &start);
@@ -409,8 +429,7 @@ void rw_thrd_main(int argc, char **argv)
 
         for (i = 0; i < NB_WTHRD; i++) {
             wargs[i].fd = FD;
-            wargs[i].iosize = BLK_SZ/*CHUNK_SZ*/;
-            assert(NB_WTHRD > 0);
+            wargs[i].iosize = CHUNK_SZ;
             wargs[i].nb_rw = NB_WRITE/NB_WTHRD;
             wargs[i].is_read = false;
             wargs[i].ret = calloc(wargs[i].nb_rw, sizeof(int));
@@ -437,7 +456,7 @@ void rw_thrd_main(int argc, char **argv)
 
         for (i = 0; i < NB_RTHRD; i++) {
             rargs[i].fd = FD;
-            rargs[i].iosize = BLK_SZ/*CHUNK_SZ*/;
+            rargs[i].iosize = CHUNK_SZ;
             rargs[i].nb_rw = NB_READ/NB_RTHRD;
             rargs[i].is_read = true; /* read thread */
             rargs[i].ret = calloc(rargs[i].nb_rw, sizeof(int));
@@ -538,6 +557,8 @@ int main(int argc, char **argv)
     check_all_var();
 
     rw_thrd_main(argc, argv);
+
+    printf("end of main\n");
 
     return 0;
 }
