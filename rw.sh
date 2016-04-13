@@ -14,6 +14,7 @@ isMounted=$(mount | grep "/mnt/tmpfs")
 if [[ "X" == "X"$isMounted ]]; then
     echo ""
     sudo mount -t tmpfs -o size=32m tmpfs /mnt/tmpfs
+    sudo chown sim:sim /mnt/tmpfs -R
 fi
 
 
@@ -43,11 +44,11 @@ echo "BEGIN RW TEST"
 for disk in "md0"; do #"sdb" "sdc" "sdd"; do
     ./sio \
         --device /dev/$disk \
-        --read_threads 9 \
-        --read_nb_blocks 72000 \
+        --read_threads 10 \
+        --read_nb_blocks 400000 \
         --write_threads 1 \
-        --write_nb_blocks 8000 \
-        --verbose \
+        --write_nb_blocks 30000 \
         --sort \
-        --output /mnt/tmpfs/gc-eio-d100-${disk}.rst 
+        --verbose \
+        --output /mnt/tmpfs/vssim-md0.raw
 done

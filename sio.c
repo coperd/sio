@@ -21,7 +21,7 @@
 #define MB              (KB*KB)
 #define CHUNK_SZ        (4*KB)
 #define STRIPE_SZ       (3*CHUNK_SZ)
-#define ALIGNMENT       512 // O_DIRECT
+#define ALIGNMENT       4096 // O_DIRECT
 
 #define handle_error_en(en, msg) \
     do { errno = en; perror(msg); exit(EXIT_FAILURE); } while (0)
@@ -456,7 +456,7 @@ void rw_thrd_main(int argc, char **argv)
 
         for (i = 0; i < NB_RTHRD; i++) {
             rargs[i].fd = FD;
-            rargs[i].iosize = CHUNK_SZ;
+            rargs[i].iosize = STRIPE_SZ;
             rargs[i].nb_rw = NB_READ/NB_RTHRD;
             rargs[i].is_read = true; /* read thread */
             rargs[i].ret = calloc(rargs[i].nb_rw, sizeof(int));
@@ -522,7 +522,9 @@ void rw_thrd_main(int argc, char **argv)
     if (rstfile[0] == '\0') {
         fp = stdout;
     } else {
-        fp = fopen(rstfile, "w+");
+        fp = fopen(rstfile, "w");
+        if (fp == NULL)
+            fp = stdout;
     }
 
     if (NB_RTHRD > 0) {
