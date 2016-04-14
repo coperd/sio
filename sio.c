@@ -386,7 +386,7 @@ void rw_thrd_main(int argc, char **argv)
     int *tw_latencylist = calloc(NB_WRITE, sizeof(int));
     int *tw_retlist = calloc(NB_WRITE, sizeof(int));
     int *tw_errlist = calloc(NB_WRITE, sizeof(int));
-    off_t *tw_oftlist = calloc(NB_READ, sizeof(off_t));
+    off_t *tw_oftlist = calloc(NB_WRITE, sizeof(off_t));
 
     int i, j, ret;
 
