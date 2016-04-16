@@ -206,6 +206,11 @@ void check_all_var()
         err++;
     }
 
+    if (DSK_SZ <= 0) {
+        printf("ERROR: disk size should be larger than 0!\n");
+        err++;
+    }
+
     if ((NB_WARMUP < 0) || (NB_RTHRD < 0) || (NB_READ < 0) || (NB_WTHRD < 0) || 
             (NB_WRITE < 0)) {
         printf("ERROR: illeagal variables");
@@ -311,14 +316,12 @@ void *rw_iothread(void *arg)
 
     int nb_thread_rw = tinfo->nb_rw;
 
-#if 0
     struct timespec rts, wts;
     rts.tv_sec = 0;
-    rts.tv_nsec = 40000000;
+    rts.tv_nsec = 10000000;
 
     wts.tv_sec = 0;
-    wts.tv_nsec = 40000000; // 40ms
-#endif
+    wts.tv_nsec = 1500000; // 40ms
 
     if (tinfo->is_read) {   /* create read threads */
         for (i = 0; i < nb_thread_rw; i++) {
@@ -340,7 +343,7 @@ void *rw_iothread(void *arg)
                 printf("pread  %-6d ret: %-6d errno: %-2d offset: %-8ld\n", 
                         ++read_cnt, ret, errlist[i], randoffset*CHUNK_SZ/512);
             }
-            //ssleep(&rts);
+            ssleep(&rts);
         }
     } else {                /* create write threads */
         for (i = 0; i < nb_thread_rw; i++) {
@@ -363,7 +366,7 @@ void *rw_iothread(void *arg)
                         ++write_cnt, ret, errlist[i], randoffset*CHUNK_SZ/512);
             }
 
-            //ssleep(&wts);
+            ssleep(&wts);
 
         }
     }
@@ -429,7 +432,7 @@ void rw_thrd_main(int argc, char **argv)
 
         for (i = 0; i < NB_WTHRD; i++) {
             wargs[i].fd = FD;
-            wargs[i].iosize = CHUNK_SZ;
+            wargs[i].iosize = CHUNK_SZ*2;
             wargs[i].nb_rw = NB_WRITE/NB_WTHRD;
             wargs[i].is_read = false;
             wargs[i].ret = calloc(wargs[i].nb_rw, sizeof(int));
