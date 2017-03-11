@@ -133,48 +133,48 @@ void parse_param(int argc, char **argv)
         if (c == -1) break;
 
         switch (c) {
-            case 'd':
-                strncpy(dev, optarg, 32); 
-                printf("DISK: %s\n", dev);
-                break;
-            case 'b':
-                BLK_SZ = atol(optarg);
-                BLK_SZ *= 4*KB;
-                break;
-            case 'r':
-                NB_RTHRD = atol(optarg);
-                printf("NB_RTHRD: %ld\n", NB_RTHRD);
-                break;
-            case 'p':
-                NB_READ = atol(optarg);
-                printf("NB_READ: %ld\n", NB_READ);
-                break;
-            case 'w':
-                NB_WTHRD = atol(optarg);
-                printf("NB_WTHRD: %ld\n", NB_WTHRD);
-                break;
-            case 'q':
-                NB_WRITE = atol(optarg);
-                printf("NB_WRITE: %ld\n", NB_WRITE);
-                break;
-            case 'm':
-                NB_WARMUP = atol(optarg);
-                printf("NB_WARMUP: %ld\n", NB_WARMUP);
-                break;
-            case 'o':
-                strncpy(rstfile, optarg, 64);
-                break;
-            case 'v':
-                vflag = 1;
-                break;
-            case 's':
-                sflag = 1;
-                break;
-            case 'h':
-            case '?':
-            default:
-                usage();
-                exit(EXIT_FAILURE);
+        case 'd':
+            strncpy(dev, optarg, 32); 
+            printf("DISK: %s\n", dev);
+            break;
+        case 'b':
+            BLK_SZ = atol(optarg);
+            BLK_SZ *= 4*KB;
+            break;
+        case 'r':
+            NB_RTHRD = atol(optarg);
+            printf("NB_RTHRD: %ld\n", NB_RTHRD);
+            break;
+        case 'p':
+            NB_READ = atol(optarg);
+            printf("NB_READ: %ld\n", NB_READ);
+            break;
+        case 'w':
+            NB_WTHRD = atol(optarg);
+            printf("NB_WTHRD: %ld\n", NB_WTHRD);
+            break;
+        case 'q':
+            NB_WRITE = atol(optarg);
+            printf("NB_WRITE: %ld\n", NB_WRITE);
+            break;
+        case 'm':
+            NB_WARMUP = atol(optarg);
+            printf("NB_WARMUP: %ld\n", NB_WARMUP);
+            break;
+        case 'o':
+            strncpy(rstfile, optarg, 64);
+            break;
+        case 'v':
+            vflag = 1;
+            break;
+        case 's':
+            sflag = 1;
+            break;
+        case 'h':
+        case '?':
+        default:
+            usage();
+            exit(EXIT_FAILURE);
         }
     }
 
@@ -316,12 +316,14 @@ void *rw_iothread(void *arg)
 
     int nb_thread_rw = tinfo->nb_rw;
 
+#if 0
     struct timespec rts, wts;
     rts.tv_sec = 0;
     rts.tv_nsec = 10000000;
 
     wts.tv_sec = 0;
     wts.tv_nsec = 1500000; // 40ms
+#endif
 
     if (tinfo->is_read) {   /* create read threads */
         for (i = 0; i < nb_thread_rw; i++) {
@@ -343,7 +345,7 @@ void *rw_iothread(void *arg)
                 printf("pread  %-6d ret: %-6d errno: %-2d offset: %-8ld\n", 
                         ++read_cnt, ret, errlist[i], randoffset*CHUNK_SZ/512);
             }
-            ssleep(&rts);
+            //ssleep(&rts);
         }
     } else {                /* create write threads */
         for (i = 0; i < nb_thread_rw; i++) {
@@ -366,7 +368,7 @@ void *rw_iothread(void *arg)
                         ++write_cnt, ret, errlist[i], randoffset*CHUNK_SZ/512);
             }
 
-            ssleep(&wts);
+            //ssleep(&wts);
 
         }
     }
@@ -531,23 +533,17 @@ void rw_thrd_main(int argc, char **argv)
     }
 
     if (NB_RTHRD > 0) {
-        fprintf(fp, "###Read Latency Start###\n");
-
         for (i = 0; i < NB_READ; i++) {
-            fprintf(fp, "%-8ld\t%-6d\t%-6d\t%-8d\n", tr_oftlist[i], tr_retlist[i], 
-                    tr_errlist[i], tr_latencylist[i]);
+            fprintf(fp, "%ld, %d, %d, %d\n", tr_oftlist[i], tr_latencylist[i], 
+                    tr_retlist[i], tr_errlist[i]);
         }
-        fprintf(fp, "###Read Latency End###\n");
     }
 
     if (NB_WTHRD > 0) {
-        fprintf(fp, "###Write Latency Start###\n");
-
         for (i = 0; i < NB_WRITE; i++) {
-            fprintf(fp, "%-8ld\t%-6d\t%-6d\t%-8d\n", tw_oftlist[i], tw_retlist[i], 
-                    tw_errlist[i], tw_latencylist[i]);
+            fprintf(fp, "%ld,%d,%d,%d\n", tw_oftlist[i], tw_latencylist[i], 
+                    tw_retlist[i], tw_errlist[i]);
         }
-        fprintf(fp, "###Write Latency End###\n");
     }
 
     if ((NB_RTHRD > 0 && NB_READ > 0) || (NB_WTHRD > 0 && NB_WRITE > 0)) {
