@@ -43,7 +43,6 @@ void *warmup_thread(void *args)
 /* create a read/write thread according to arg->is_read */
 void *rw_iothread(void *arg)
 {
-    sleep(5);
     int i;
     void *buf;
     struct timespec rstart, rend;
@@ -63,11 +62,11 @@ void *rw_iothread(void *arg)
 
     int nb_thread_rw = tinfo->nb_rw;
 
-#if 0
     struct timespec rts, wts;
     rts.tv_sec = 0;
-    rts.tv_nsec = 10000000;
+    rts.tv_nsec = 1000000;
 
+#if 0
     wts.tv_sec = 0;
     wts.tv_nsec = 1500000; // 40ms
 #endif
@@ -92,7 +91,7 @@ void *rw_iothread(void *arg)
                 printf("pread  %-6d ret: %-6d errno: %-2d offset: %-8ld\n", 
                         ++read_cnt, ret, errlist[i], randoffset*CHUNK_SZ/512);
             }
-            //ssleep(&rts);
+            ssleep(&rts);
         }
     } else {                /* create write threads */
         for (i = 0; i < nb_thread_rw; i++) {
@@ -149,7 +148,7 @@ void rw_thrd_main(int argc, char **argv)
     if (NB_WARMUP > 0) {
 
         warmup_args->fd = FD;
-        warmup_args->iosize = CHUNK_SZ;
+        warmup_args->iosize = BLK_SZ;
         warmup_args->is_read = false;
         warmup_args->nb_rw = NB_WARMUP;
 
@@ -181,7 +180,7 @@ void rw_thrd_main(int argc, char **argv)
 
         for (i = 0; i < NB_WTHRD; i++) {
             wargs[i].fd = FD;
-            wargs[i].iosize = CHUNK_SZ*2;
+            wargs[i].iosize = BLK_SZ;
             wargs[i].nb_rw = NB_WRITE/NB_WTHRD;
             wargs[i].is_read = false;
             wargs[i].ret = calloc(wargs[i].nb_rw, sizeof(int));
@@ -208,7 +207,7 @@ void rw_thrd_main(int argc, char **argv)
 
         for (i = 0; i < NB_RTHRD; i++) {
             rargs[i].fd = FD;
-            rargs[i].iosize = STRIPE_SZ;
+            rargs[i].iosize = BLK_SZ;
             rargs[i].nb_rw = NB_READ/NB_RTHRD;
             rargs[i].is_read = true; /* read thread */
             rargs[i].ret = calloc(rargs[i].nb_rw, sizeof(int));
