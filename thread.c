@@ -12,7 +12,7 @@ void *warmup_thread(void *args)
     struct thread_info *tinfo = (struct thread_info *)args;
     int fd = tinfo->fd;
     int iosize = tinfo->iosize;
-    printf("iosize=%d, BLK_SZ = %ld\n", iosize, BLK_SZ);
+    //printf("iosize=%d, BLK_SZ = %ld\n", iosize, BLK_SZ);
     int nb_thread_rw = tinfo->nb_rw;
     sio_memalign(&buf, ALIGNMENT, iosize);
 
@@ -62,20 +62,23 @@ void *rw_iothread(void *arg)
 
     int nb_thread_rw = tinfo->nb_rw;
 
+#if 0
     struct timespec rts, wts;
     rts.tv_sec = 0;
     rts.tv_nsec = 1000000;
 
-#if 0
     wts.tv_sec = 0;
     wts.tv_nsec = 1500000; // 40ms
 #endif
 
     if (tinfo->is_read) {   /* create read threads */
         for (i = 0; i < nb_thread_rw; i++) {
+            //printf("%d\n", i+1);
             off_t randoffset = rand() % RBLK_RANGE;
             clock_gettime(CLOCK_REALTIME, &rstart);
+            //printf("READ: fd=%d,iosize=%d\n", fd, iosize);
             int ret = pread(fd, buf, iosize, randoffset*BLK_SZ);
+            //int ret = syscall(548, fd, buf, iosize, randoffset*BLK_SZ);
             clock_gettime(CLOCK_REALTIME, &rend);
             if (ret == -1) {
                 errlist[i] = errno;
@@ -91,7 +94,7 @@ void *rw_iothread(void *arg)
                 printf("pread  %-6d ret: %-6d errno: %-2d offset: %-8ld\n", 
                         ++read_cnt, ret, errlist[i], randoffset*CHUNK_SZ/512);
             }
-            ssleep(&rts);
+            //ssleep(&rts);
         }
     } else {                /* create write threads */
         for (i = 0; i < nb_thread_rw; i++) {

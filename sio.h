@@ -19,6 +19,7 @@
 
 #define KB              (1024L)
 #define MB              (KB*KB)
+#define GB              (KB*MB)
 #define CHUNK_SZ        (4*KB)
 #define STRIPE_SZ       (3*CHUNK_SZ)
 #define ALIGNMENT       4096 // O_DIRECT

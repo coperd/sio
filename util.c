@@ -21,12 +21,13 @@ void sio_memalign(void **memptr, size_t alignment, size_t size)
 
 uint64_t get_disk_sz_in_bytes(int fd)
 {
+    return 1*GB;
     off_t size = lseek(fd, 0, SEEK_END);
     if (size == -1) {
         handle_error("lseek");
     }
 
-    return (int64_t)size;
+    //return (int64_t)size;
 }
 
 int64_t calc_latency(struct timespec, struct timespec);
